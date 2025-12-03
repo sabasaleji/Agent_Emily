@@ -75,16 +75,14 @@ class WebsiteAnalyzerAgent:
             
             seo_analysis, performance_analysis, content_analysis, technical_analysis = await asyncio.gather(*tasks)
             
-            # Generate AI-powered recommendations
-            recommendations = await self._generate_recommendations(
-                seo_analysis, performance_analysis, content_analysis, technical_analysis
-            )
+            # Generate AI-powered recommendations from all analysis data
+            recommendations = await self._generate_recommendations(seo_analysis, performance_analysis, content_analysis, technical_analysis)
             
-            # Calculate overall scores
-            seo_score = self._calculate_seo_score(seo_analysis)
+            # Calculate overall scores from PageSpeed Insights
+            seo_score = self._calculate_seo_score_from_pagespeed(performance_analysis)
             performance_score = self._calculate_performance_score(performance_analysis)
-            accessibility_score = self._calculate_accessibility_score(technical_analysis)
-            best_practices_score = self._calculate_best_practices_score(technical_analysis)
+            accessibility_score = self._calculate_accessibility_score_from_pagespeed(performance_analysis)
+            best_practices_score = self._calculate_best_practices_score_from_pagespeed(performance_analysis)
             
             # Create result object
             result = WebsiteAnalysisResult(
@@ -225,7 +223,7 @@ class WebsiteAnalyzerAgent:
             params = {
                 'url': url,
                 'key': self.pagespeed_api_key,
-                'strategy': 'mobile',  # Also analyze mobile performance
+                'strategy': 'desktop',  # Analyze desktop performance
                 'category': ['performance', 'accessibility', 'best-practices', 'seo']
             }
             
@@ -291,6 +289,22 @@ class WebsiteAnalyzerAgent:
                     'value': cls.get('numericValue', 0),
                     'score': cls.get('score', 0),
                     'displayValue': cls.get('displayValue', '')
+                }
+            
+            # Extract INP (Interaction to Next Paint)
+            if 'interaction-to-next-paint' in audits:
+                inp = audits['interaction-to-next-paint']
+                core_web_vitals['inp'] = {
+                    'value': inp.get('numericValue', 0),
+                    'score': inp.get('score', 0),
+                    'displayValue': inp.get('displayValue', '')
+                }
+            elif 'experimental-interaction-to-next-paint' in audits:
+                inp = audits['experimental-interaction-to-next-paint']
+                core_web_vitals['inp'] = {
+                    'value': inp.get('numericValue', 0),
+                    'score': inp.get('score', 0),
+                    'displayValue': inp.get('displayValue', '')
                 }
             
             # Extract opportunities and diagnostics
@@ -477,34 +491,308 @@ class WebsiteAnalyzerAgent:
             logger.error(f"Error in technical analysis: {str(e)}")
             return {}
     
-    async def _generate_recommendations(self, seo_analysis: Dict, performance_analysis: Dict, 
-                                      content_analysis: Dict, technical_analysis: Dict) -> List[Dict[str, Any]]:
-        """Generate AI-powered recommendations based on analysis"""
+    async def _generate_recommendations_from_pagespeed(self, performance_analysis: Dict) -> List[Dict[str, Any]]:
+        """Generate 3 AI-powered recommendations based on PageSpeed Insights data only"""
         try:
-            if not self.openai_api_key:
-                return self._generate_basic_recommendations(seo_analysis, performance_analysis, content_analysis, technical_analysis)
+            if 'error' in performance_analysis:
+                return [{
+                    'category': 'Performance',
+                    'title': 'PageSpeed Analysis Unavailable',
+                    'description': 'Unable to analyze website performance. Please check your PageSpeed API key configuration.',
+                    'impact': 'High'
+                }]
             
-            # Prepare analysis summary for AI
-            analysis_summary = {
-                'seo': seo_analysis,
-                'performance': performance_analysis,
-                'content': content_analysis,
-                'technical': technical_analysis
+            if not self.openai_api_key:
+                return self._generate_basic_recommendations_from_pagespeed(performance_analysis)
+            
+            # Extract PageSpeed data for recommendations
+            scores = performance_analysis.get('scores', {})
+            core_web_vitals = performance_analysis.get('core_web_vitals', {})
+            
+            # Prepare data for LLM
+            pagespeed_data = {
+                'scores': {
+                    'performance': scores.get('performance', {}).get('score', 0),
+                    'accessibility': scores.get('accessibility', {}).get('score', 0),
+                    'best_practices': scores.get('best-practices', {}).get('score', 0),
+                    'seo': scores.get('seo', {}).get('score', 0)
+                },
+                'core_web_vitals': {
+                    'lcp': {
+                        'value': core_web_vitals.get('lcp', {}).get('value', 0),
+                        'score': core_web_vitals.get('lcp', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('lcp', {}).get('displayValue', 'N/A')
+                    },
+                    'fcp': {
+                        'value': core_web_vitals.get('fcp', {}).get('value', 0),
+                        'score': core_web_vitals.get('fcp', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('fcp', {}).get('displayValue', 'N/A')
+                    },
+                    'inp': {
+                        'value': core_web_vitals.get('inp', {}).get('value', 0),
+                        'score': core_web_vitals.get('inp', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('inp', {}).get('displayValue', 'N/A')
+                    },
+                    'cls': {
+                        'value': core_web_vitals.get('cls', {}).get('value', 0),
+                        'score': core_web_vitals.get('cls', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('cls', {}).get('displayValue', 'N/A')
+                    }
+                }
             }
             
             # Call OpenAI API for recommendations
             import openai
-            openai.api_key = self.openai_api_key
+            from openai import AsyncOpenAI
             
             prompt = f"""
-            Analyze this website data and provide 10 actionable recommendations for improvement.
-            Focus on SEO, performance, content quality, and technical aspects.
-            Return as JSON array with format: [{{"category": "SEO", "priority": "High", "title": "Fix missing meta description", "description": "Add a compelling meta description between 150-160 characters", "impact": "High"}}]
+            Analyze this Google PageSpeed Insights data and provide exactly 3 actionable recommendations for improving the website's performance.
             
-            Analysis data: {json.dumps(analysis_summary, indent=2)}
+            Focus on the Core Web Vitals (LCP, FCP, INP, CLS) and the performance scores.
+            
+            Return as a JSON array with exactly 3 items in this format:
+            [
+                {{
+                    "category": "Performance",
+                    "title": "Short recommendation title",
+                    "description": "Detailed explanation of the recommendation and how to implement it",
+                    "impact": "High|Medium|Low"
+                }}
+            ]
+            
+            PageSpeed Insights Data:
+            {json.dumps(pagespeed_data, indent=2)}
+            
+            Make sure to return exactly 3 recommendations focusing on the most critical issues based on the scores and Core Web Vitals values.
             """
             
-            client = openai.AsyncOpenAI(api_key=self.openai_api_key)
+            client = AsyncOpenAI(api_key=self.openai_api_key)
+            response = await client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800,
+                temperature=0.7
+            )
+            
+            recommendations_text = response.choices[0].message.content.strip()
+            
+            # Try to extract JSON from markdown code blocks if present
+            if recommendations_text.startswith('```'):
+                import re
+                json_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', recommendations_text, re.DOTALL)
+                if json_match:
+                    recommendations_text = json_match.group(1)
+            
+            recommendations = json.loads(recommendations_text)
+            
+            # Ensure exactly 3 recommendations
+            if isinstance(recommendations, list):
+                return recommendations[:3]
+            else:
+                return [recommendations] if recommendations else []
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing LLM recommendations JSON: {str(e)}")
+            logger.error(f"LLM response: {recommendations_text if 'recommendations_text' in locals() else 'N/A'}")
+            return self._generate_basic_recommendations_from_pagespeed(performance_analysis)
+        except Exception as e:
+            logger.error(f"Error generating AI recommendations: {str(e)}")
+            return self._generate_basic_recommendations_from_pagespeed(performance_analysis)
+    
+    def _generate_basic_recommendations_from_pagespeed(self, performance_analysis: Dict) -> List[Dict[str, Any]]:
+        """Generate basic recommendations from PageSpeed data without AI"""
+        recommendations = []
+        
+        if 'error' in performance_analysis:
+            return [{
+                'category': 'Performance',
+                'title': 'PageSpeed Analysis Unavailable',
+                'description': 'Unable to analyze website performance.',
+                'impact': 'High'
+            }]
+        
+        scores = performance_analysis.get('scores', {})
+        core_web_vitals = performance_analysis.get('core_web_vitals', {})
+        
+        # Check performance score
+        perf_score = scores.get('performance', {}).get('score', 0)
+        if perf_score < 0.7:
+            recommendations.append({
+                'category': 'Performance',
+                'title': 'Improve Page Load Performance',
+                'description': f'Your performance score is {int(perf_score * 100)}/100. Optimize images, minify CSS/JS, and enable caching to improve load times.',
+                'impact': 'High'
+            })
+        
+        # Check LCP
+        lcp_value = core_web_vitals.get('lcp', {}).get('value', 0)
+        if lcp_value > 2500:  # LCP should be under 2.5s
+            recommendations.append({
+                'category': 'Performance',
+                'title': 'Optimize Largest Contentful Paint (LCP)',
+                'description': f'Your LCP is {core_web_vitals.get("lcp", {}).get("displayValue", "high")}. Optimize images, use a CDN, and improve server response times.',
+                'impact': 'High'
+            })
+        
+        # Check CLS
+        cls_value = core_web_vitals.get('cls', {}).get('value', 0)
+        if cls_value > 0.1:  # CLS should be under 0.1
+            recommendations.append({
+                'category': 'Performance',
+                'title': 'Reduce Cumulative Layout Shift (CLS)',
+                'description': f'Your CLS is {core_web_vitals.get("cls", {}).get("displayValue", "high")}. Set size attributes on images and avoid inserting content above existing content.',
+                'impact': 'Medium'
+            })
+        
+        # Ensure we have exactly 3 recommendations
+        while len(recommendations) < 3:
+            recommendations.append({
+                'category': 'Performance',
+                'title': 'Continue Monitoring Performance',
+                'description': 'Regularly monitor your website performance using PageSpeed Insights and address any new issues.',
+                'impact': 'Low'
+            })
+        
+        return recommendations[:3]
+    
+    async def _generate_recommendations(self, seo_analysis: Dict, performance_analysis: Dict, 
+                                      content_analysis: Dict, technical_analysis: Dict) -> List[Dict[str, Any]]:
+        """Generate 3 AI-powered recommendations based on all analysis data plus PageSpeed Core Web Vitals"""
+        try:
+            if not self.openai_api_key:
+                return self._generate_basic_recommendations(seo_analysis, performance_analysis, content_analysis, technical_analysis)
+            
+            # Calculate current scores to identify areas needing improvement
+            seo_score = self._calculate_seo_score_from_pagespeed(performance_analysis)
+            performance_score = self._calculate_performance_score(performance_analysis)
+            accessibility_score = self._calculate_accessibility_score_from_pagespeed(performance_analysis)
+            best_practices_score = self._calculate_best_practices_score_from_pagespeed(performance_analysis)
+            
+            # Extract Core Web Vitals and Performance scores from PageSpeed
+            scores = performance_analysis.get('scores', {})
+            core_web_vitals = performance_analysis.get('core_web_vitals', {})
+            
+            # Identify areas that need improvement (scores < 90)
+            areas_needing_improvement = []
+            if seo_score < 90:
+                areas_needing_improvement.append(('SEO', seo_score))
+            if performance_score < 90:
+                areas_needing_improvement.append(('Performance', performance_score))
+            if accessibility_score < 90:
+                areas_needing_improvement.append(('Accessibility', accessibility_score))
+            if best_practices_score < 90:
+                areas_needing_improvement.append(('Best Practices', best_practices_score))
+            
+            # Sort by score (lowest first) to prioritize worst areas
+            areas_needing_improvement.sort(key=lambda x: x[1])
+            
+            # Prepare analysis summary for AI with all data plus PageSpeed metrics
+            analysis_summary = {
+                'current_scores': {
+                    'seo': seo_score,
+                    'performance': performance_score,
+                    'accessibility': accessibility_score,
+                    'best_practices': best_practices_score,
+                    'overall': (seo_score + performance_score + accessibility_score + best_practices_score) // 4
+                },
+                'areas_needing_improvement': [area[0] for area in areas_needing_improvement],
+                'seo': seo_analysis,
+                'performance': performance_analysis,
+                'content': content_analysis,
+                'technical': technical_analysis,
+                'pagespeed_scores': {
+                    'performance': scores.get('performance', {}).get('score', 0),
+                    'accessibility': scores.get('accessibility', {}).get('score', 0),
+                    'best_practices': scores.get('best-practices', {}).get('score', 0),
+                    'seo': scores.get('seo', {}).get('score', 0)
+                },
+                'core_web_vitals': {
+                    'lcp': {
+                        'value': core_web_vitals.get('lcp', {}).get('value', 0),
+                        'score': core_web_vitals.get('lcp', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('lcp', {}).get('displayValue', 'N/A')
+                    },
+                    'fcp': {
+                        'value': core_web_vitals.get('fcp', {}).get('value', 0),
+                        'score': core_web_vitals.get('fcp', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('fcp', {}).get('displayValue', 'N/A')
+                    },
+                    'inp': {
+                        'value': core_web_vitals.get('inp', {}).get('value', 0),
+                        'score': core_web_vitals.get('inp', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('inp', {}).get('displayValue', 'N/A')
+                    },
+                    'cls': {
+                        'value': core_web_vitals.get('cls', {}).get('value', 0),
+                        'score': core_web_vitals.get('cls', {}).get('score', 0),
+                        'displayValue': core_web_vitals.get('cls', {}).get('displayValue', 'N/A')
+                    }
+                }
+            }
+            
+            # Call OpenAI API for recommendations
+            import openai
+            from openai import AsyncOpenAI
+            
+            # Build focus areas message
+            if not areas_needing_improvement:
+                focus_message = "All areas are performing well (scores above 90). Provide general optimization recommendations to further improve the overall website score."
+            else:
+                focus_areas = ", ".join([f"{area[0]} ({area[1]}/100)" for area in areas_needing_improvement[:3]])
+                focus_message = f"CRITICAL: Focus recommendations ONLY on these areas that need improvement: {focus_areas}. DO NOT provide recommendations for areas with scores of 90 or above."
+            
+            prompt = f"""
+You are a helpful website improvement advisor. Analyze this website data and provide up to 3 actionable recommendations to improve the overall website score.
+
+CRITICAL INSTRUCTIONS:
+1. {focus_message}
+2. Write in SIMPLE, PLAIN ENGLISH that anyone can understand - no technical jargon
+3. Explain technical terms if you must use them (e.g., "images that load slowly" instead of "render-blocking resources")
+4. Use everyday language - imagine explaining to a friend who doesn't know about websites
+5. Keep descriptions complete but concise - users need to see the full text
+6. Provide practical, step-by-step advice that non-technical people can follow
+7. Maximum 3 recommendations - each must be UNIQUE and DIFFERENT from the others
+8. Each recommendation must be specific and actionable - tell users EXACTLY what to do
+
+Example of GOOD non-technical language:
+- "Your website takes too long to load (Performance score: 75). Try making your images smaller before uploading them. You can use free tools like TinyPNG.com to compress images. Simply upload your image, download the compressed version, and replace the original on your website."
+- "Your page is missing descriptions that help search engines understand your content (SEO score: 65). Add a description between 150-160 characters that explains what your page is about. You can add this in your website's settings or ask your web developer to add it."
+
+Example of BAD technical language (DO NOT USE):
+- "Optimize render-blocking resources and defer non-critical CSS"
+- "Implement lazy loading for above-the-fold content"
+- Generic advice like "Continue monitoring performance"
+
+Current Website Scores:
+- SEO: {seo_score}/100
+- Performance: {performance_score}/100
+- Accessibility: {accessibility_score}/100
+- Best Practices: {best_practices_score}/100
+- Overall: {(seo_score + performance_score + accessibility_score + best_practices_score) // 4}/100
+
+Return as a JSON array with up to 3 UNIQUE items in this format:
+[
+    {{
+        "category": "SEO|Performance|Accessibility|Best Practices|Content|Technical",
+        "title": "Short, simple title (avoid technical terms)",
+        "description": "Complete, specific explanation in plain English. Explain: 1) What the problem is, 2) Why it matters in simple terms, 3) EXACT step-by-step instructions on how to fix it. Be specific - tell users exactly what to do, where to go, or what tools to use. Make sure the description is complete and doesn't get cut off.",
+        "impact": "High|Medium|Low"
+    }}
+]
+
+IMPORTANT: 
+- Each recommendation must be DIFFERENT and address a DIFFERENT issue
+- Do NOT repeat the same recommendation
+- Focus on areas with scores below 90
+- Provide SPECIFIC, ACTIONABLE steps - not generic advice
+
+Analysis data:
+{json.dumps(analysis_summary, indent=2)}
+
+Focus on the lowest scoring areas and provide practical, actionable advice that non-technical users can follow.
+"""
+            
+            client = AsyncOpenAI(api_key=self.openai_api_key)
             response = await client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
@@ -512,60 +800,137 @@ class WebsiteAnalyzerAgent:
                 temperature=0.7
             )
             
-            recommendations_text = response.choices[0].message.content
+            recommendations_text = response.choices[0].message.content.strip()
+            
+            # Try to extract JSON from markdown code blocks if present
+            if recommendations_text.startswith('```'):
+                import re
+                json_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', recommendations_text, re.DOTALL)
+                if json_match:
+                    recommendations_text = json_match.group(1)
+            
             recommendations = json.loads(recommendations_text)
             
-            return recommendations[:10]  # Limit to 10 recommendations
+            # Ensure up to 3 unique recommendations (can be less)
+            if isinstance(recommendations, list):
+                # Remove duplicates based on title
+                seen_titles = set()
+                unique_recommendations = []
+                for rec in recommendations:
+                    title = rec.get('title', '').lower().strip()
+                    if title and title not in seen_titles:
+                        seen_titles.add(title)
+                        unique_recommendations.append(rec)
+                    if len(unique_recommendations) >= 3:
+                        break
+                return unique_recommendations[:3]
+            else:
+                return [recommendations] if recommendations else []
             
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing LLM recommendations JSON: {str(e)}")
+            logger.error(f"LLM response: {recommendations_text if 'recommendations_text' in locals() else 'N/A'}")
+            return self._generate_basic_recommendations(seo_analysis, performance_analysis, content_analysis, technical_analysis)
         except Exception as e:
             logger.error(f"Error generating AI recommendations: {str(e)}")
             return self._generate_basic_recommendations(seo_analysis, performance_analysis, content_analysis, technical_analysis)
     
     def _generate_basic_recommendations(self, seo_analysis: Dict, performance_analysis: Dict, 
                                       content_analysis: Dict, technical_analysis: Dict) -> List[Dict[str, Any]]:
-        """Generate basic recommendations without AI"""
+        """Generate basic recommendations without AI, focusing on lowest scoring areas"""
         recommendations = []
         
-        # SEO recommendations
-        if seo_analysis.get('title', {}).get('length', 0) < 30:
-            recommendations.append({
-                'category': 'SEO',
-                'priority': 'High',
-                'title': 'Optimize page title',
-                'description': 'Page title is too short. Aim for 50-60 characters.',
-                'impact': 'High'
-            })
+        # Calculate scores to identify areas needing improvement
+        seo_score = self._calculate_seo_score_from_pagespeed(performance_analysis)
+        performance_score = self._calculate_performance_score(performance_analysis)
+        accessibility_score = self._calculate_accessibility_score_from_pagespeed(performance_analysis)
+        best_practices_score = self._calculate_best_practices_score_from_pagespeed(performance_analysis)
         
-        if not seo_analysis.get('meta_description', {}).get('text'):
-            recommendations.append({
-                'category': 'SEO',
-                'priority': 'High',
-                'title': 'Add meta description',
-                'description': 'Add a compelling meta description between 150-160 characters.',
-                'impact': 'High'
-            })
+        # Create list of scores with their categories
+        score_list = [
+            ('SEO', seo_score, seo_analysis),
+            ('Performance', performance_score, performance_analysis),
+            ('Accessibility', accessibility_score, technical_analysis),
+            ('Best Practices', best_practices_score, technical_analysis)
+        ]
         
-        # Performance recommendations
-        if performance_analysis.get('scores', {}).get('performance', {}).get('score', 0) < 0.9:
-            recommendations.append({
-                'category': 'Performance',
-                'priority': 'High',
-                'title': 'Improve page speed',
-                'description': 'Page load speed is below optimal. Consider optimizing images and scripts.',
-                'impact': 'High'
-            })
+        # Sort by score (lowest first) - only consider scores below 90
+        score_list = [item for item in score_list if item[1] < 90]
+        score_list.sort(key=lambda x: x[1])
         
-        # Content recommendations
-        if content_analysis.get('readability', {}).get('flesch_score', 0) < 30:
-            recommendations.append({
-                'category': 'Content',
-                'priority': 'Medium',
-                'title': 'Improve content readability',
-                'description': 'Content is difficult to read. Simplify language and sentence structure.',
-                'impact': 'Medium'
-            })
+        # Generate recommendations for lowest scoring areas only
+        for category, score, analysis_data in score_list[:3]:
+            if category == 'SEO' and score < 90:
+                if seo_analysis.get('title', {}).get('length', 0) < 30:
+                    recommendations.append({
+                        'category': 'SEO',
+                        'title': 'Improve Your Page Title',
+                        'description': f'Your page title is too short (currently {seo_analysis.get("title", {}).get("length", 0)} characters). Add more descriptive words about what your page is about. Aim for 50-60 characters total. You can edit this in your website settings or content management system.',
+                        'impact': 'High'
+                    })
+                elif not seo_analysis.get('meta_description', {}).get('text'):
+                    recommendations.append({
+                        'category': 'SEO',
+                        'title': 'Add a Page Description',
+                        'description': 'Your page is missing a description that helps search engines understand your content. Add a compelling description between 150-160 characters that explains what your page is about. You can add this in your website settings or ask your web developer to add it.',
+                        'impact': 'High'
+                    })
+                elif seo_analysis.get('images', {}).get('alt_coverage', 1) < 0.8:
+                    recommendations.append({
+                        'category': 'SEO',
+                        'title': 'Add Descriptions to Your Images',
+                        'description': f'Some of your images are missing descriptions (alt text). This helps search engines understand your images and improves accessibility. Go through your images and add short descriptions of what each image shows. You can do this when uploading images or by editing existing images in your website editor.',
+                        'impact': 'Medium'
+                    })
+            
+            elif category == 'Performance' and score < 90:
+                perf_score_value = performance_analysis.get('scores', {}).get('performance', {}).get('score', 0)
+                lcp_value = performance_analysis.get('core_web_vitals', {}).get('lcp', {}).get('value', 0)
+                
+                if lcp_value > 2500:  # LCP should be under 2.5s
+                    recommendations.append({
+                        'category': 'Performance',
+                        'title': 'Speed Up Your Website Loading',
+                        'description': f'Your website takes too long to show the main content ({performance_analysis.get("core_web_vitals", {}).get("lcp", {}).get("displayValue", "too long")}). Make your images smaller before uploading them. Use free tools like TinyPNG.com or Squoosh.app to compress images. Simply upload your image, download the compressed version, and replace it on your website.',
+                        'impact': 'High'
+                    })
+                elif perf_score_value < 0.7:
+                    recommendations.append({
+                        'category': 'Performance',
+                        'title': 'Improve Your Website Speed',
+                        'description': f'Your website is loading slowly (Performance score: {int(perf_score_value * 100)}/100). Make your images smaller using free tools like TinyPNG.com. Also, consider using a content delivery network (CDN) if you have many visitors. Contact your web hosting provider for help setting this up.',
+                        'impact': 'High'
+                    })
+            
+            elif category == 'Accessibility' and score < 90:
+                recommendations.append({
+                    'category': 'Accessibility',
+                    'title': 'Improve Website Accessibility',
+                    'description': f'Your website accessibility score is {accessibility_score}/100. Add descriptions (alt text) to all images, ensure text has good contrast with backgrounds, and make sure all buttons and links are clearly labeled. This helps people with disabilities use your website and improves your search rankings.',
+                    'impact': 'Medium'
+                })
+            
+            elif category == 'Best Practices' and score < 90:
+                if not technical_analysis.get('ssl', {}).get('has_ssl', False):
+                    recommendations.append({
+                        'category': 'Best Practices',
+                        'title': 'Enable Secure Connection (HTTPS)',
+                        'description': 'Your website is not using a secure connection (HTTPS). This is important for protecting visitor information and improving search rankings. Contact your web hosting provider to enable SSL/HTTPS - most hosting providers offer this for free.',
+                        'impact': 'High'
+                    })
+                else:
+                    recommendations.append({
+                        'category': 'Best Practices',
+                        'title': 'Improve Website Security',
+                        'description': f'Your website security practices score is {best_practices_score}/100. Ensure your website has proper security headers and keep all software updated. Contact your web developer or hosting provider for assistance with security improvements.',
+                        'impact': 'Medium'
+                    })
+            
+            if len(recommendations) >= 3:
+                break
         
-        return recommendations[:10]
+        # Return unique recommendations (max 3)
+        return recommendations[:3]
     
     def _calculate_seo_score(self, seo_analysis: Dict) -> int:
         """Calculate SEO score (0-100)"""
@@ -599,13 +964,40 @@ class WebsiteAnalyzerAgent:
         return min(score, 100)
     
     def _calculate_performance_score(self, performance_analysis: Dict) -> int:
-        """Calculate performance score (0-100)"""
+        """Calculate performance score (0-100) from PageSpeed Insights"""
         if 'error' in performance_analysis:
             return 0
         
         scores = performance_analysis.get('scores', {})
         performance_score = scores.get('performance', {}).get('score', 0)
         return int(performance_score * 100)
+    
+    def _calculate_seo_score_from_pagespeed(self, performance_analysis: Dict) -> int:
+        """Calculate SEO score (0-100) from PageSpeed Insights"""
+        if 'error' in performance_analysis:
+            return 0
+        
+        scores = performance_analysis.get('scores', {})
+        seo_score = scores.get('seo', {}).get('score', 0)
+        return int(seo_score * 100)
+    
+    def _calculate_accessibility_score_from_pagespeed(self, performance_analysis: Dict) -> int:
+        """Calculate accessibility score (0-100) from PageSpeed Insights"""
+        if 'error' in performance_analysis:
+            return 0
+        
+        scores = performance_analysis.get('scores', {})
+        accessibility_score = scores.get('accessibility', {}).get('score', 0)
+        return int(accessibility_score * 100)
+    
+    def _calculate_best_practices_score_from_pagespeed(self, performance_analysis: Dict) -> int:
+        """Calculate best practices score (0-100) from PageSpeed Insights"""
+        if 'error' in performance_analysis:
+            return 0
+        
+        scores = performance_analysis.get('scores', {})
+        best_practices_score = scores.get('best-practices', {}).get('score', 0)
+        return int(best_practices_score * 100)
     
     def _calculate_accessibility_score(self, technical_analysis: Dict) -> int:
         """Calculate accessibility score (0-100)"""

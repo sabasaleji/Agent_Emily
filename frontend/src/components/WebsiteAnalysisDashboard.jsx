@@ -6,11 +6,33 @@ import {
 import { 
   Globe, Search, Zap, Shield, CheckCircle, AlertCircle, 
   TrendingUp, Clock, Eye, FileText, Settings, RefreshCw,
-  ExternalLink, Download, Trash2, Plus, User
+  ExternalLink, Download, Trash2, Plus, User, Info
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
+
+// Tooltip component for score cards
+const ScoreTooltip = ({ children, content }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  return (
+    <div 
+      className="relative group"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {children}
+      {showTooltip && (
+        <div className="absolute z-50 w-72 sm:w-80 md:w-96 max-w-[calc(100vw-2rem)] p-3 bg-gradient-to-br from-purple-600/50 to-pink-600/50 backdrop-blur-md text-white text-xs sm:text-sm rounded-lg shadow-xl top-full left-1/2 transform -translate-x-1/2 mt-2 pointer-events-none">
+          <div className="whitespace-normal leading-relaxed break-words">{content}</div>
+          {/* Arrow pointing up */}
+          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-purple-600/50"></div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Memoized chart data
 const useChartData = (analyses, summary) => {
@@ -426,61 +448,81 @@ const WebsiteAnalysisDashboard = () => {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl shadow-lg border border-purple-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">SEO Score</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  {Math.round(analyses[0]?.seo_score || 0)}
-                </p>
-              </div>
-              <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex-shrink-0 ml-2">
-                <Search className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+          <ScoreTooltip content="Measures how well your website is optimized for search engines, including meta tags, structured data, and content quality. Score range: 0-100.">
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl shadow-lg border border-purple-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300 cursor-help">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">SEO Score</p>
+                    <Info className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
+                  </div>
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                    {Math.round(analyses[0]?.seo_score || 0)}
+                  </p>
+                </div>
+                <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex-shrink-0 ml-2">
+                  <Search className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+                </div>
               </div>
             </div>
-          </div>
+          </ScoreTooltip>
 
-          <div className="bg-gradient-to-br from-pink-50 to-rose-50 rounded-xl shadow-lg border border-pink-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">Performance</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">
-                  {Math.round(analyses[0]?.performance_score || 0)}
-                </p>
-              </div>
-              <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-pink-500 to-rose-500 rounded-full flex-shrink-0 ml-2">
-                <Zap className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+          <ScoreTooltip content="Measures your website's loading speed, including Core Web Vitals like Largest Contentful Paint (LCP), First Contentful Paint (FCP), Interaction to Next Paint (INP), and Cumulative Layout Shift (CLS). Score range: 0-100.">
+            <div className="bg-gradient-to-br from-pink-50 to-rose-50 rounded-xl shadow-lg border border-pink-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300 cursor-help">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">Performance</p>
+                    <Info className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
+                  </div>
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">
+                    {Math.round(analyses[0]?.performance_score || 0)}
+                  </p>
+                </div>
+                <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-pink-500 to-rose-500 rounded-full flex-shrink-0 ml-2">
+                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+                </div>
               </div>
             </div>
-          </div>
+          </ScoreTooltip>
 
-          <div className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-xl shadow-lg border border-rose-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">Accessibility</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent">
-                  {Math.round(analyses[0]?.accessibility_score || 0)}
-                </p>
-              </div>
-              <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-rose-500 to-pink-500 rounded-full flex-shrink-0 ml-2">
-                <Eye className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+          <ScoreTooltip content="Measures how accessible your website is to all users, including those with disabilities. It checks for proper alt text on images, color contrast, keyboard navigation, and ARIA labels. Score range: 0-100.">
+            <div className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-xl shadow-lg border border-rose-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300 cursor-help">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">Accessibility</p>
+                    <Info className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
+                  </div>
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent">
+                    {Math.round(analyses[0]?.accessibility_score || 0)}
+                  </p>
+                </div>
+                <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-rose-500 to-pink-500 rounded-full flex-shrink-0 ml-2">
+                  <Eye className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+                </div>
               </div>
             </div>
-          </div>
+          </ScoreTooltip>
 
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-lg border border-purple-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">Best Practices</p>
-                <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                  {Math.round(analyses[0]?.best_practices_score || 0)}
-                </p>
-              </div>
-              <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex-shrink-0 ml-2">
-                <Shield className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+          <ScoreTooltip content="Measures adherence to web best practices including HTTPS usage, console errors, image aspect ratios, deprecated APIs, and password field security. Score range: 0-100.">
+            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-lg border border-purple-100 p-3 sm:p-4 md:p-5 lg:p-6 hover:shadow-xl transition-all duration-300 cursor-help">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 mb-0.5 sm:mb-1">Best Practices</p>
+                    <Info className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
+                  </div>
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                    {Math.round(analyses[0]?.best_practices_score || 0)}
+                  </p>
+                </div>
+                <div className="p-2 sm:p-2.5 md:p-3 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex-shrink-0 ml-2">
+                  <Shield className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+                </div>
               </div>
             </div>
-          </div>
+          </ScoreTooltip>
         </div>
       )}
 
@@ -545,9 +587,18 @@ const WebsiteAnalysisDashboard = () => {
                     { name: 'Accessibility', score: latestAnalysis?.accessibility_score || 0, color: '#FF6B9D' },
                     { name: 'Best Practices', score: latestAnalysis?.best_practices_score || 0, color: '#C44569' }
                   ];
-                })().map((item, index) => (
-                  <div key={index} className="flex flex-col items-center space-y-2 sm:space-y-2.5 md:space-y-3">
-                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36">
+                })().map((item, index) => {
+                  const tooltipContent = {
+                    'SEO': 'Measures how well your website is optimized for search engines, including meta tags, structured data, and content quality. Score range: 0-100.',
+                    'Performance': 'Measures your website\'s loading speed, including Core Web Vitals like Largest Contentful Paint (LCP), First Contentful Paint (FCP), Interaction to Next Paint (INP), and Cumulative Layout Shift (CLS). Score range: 0-100.',
+                    'Accessibility': 'Measures how accessible your website is to all users, including those with disabilities. It checks for proper alt text on images, color contrast, keyboard navigation, and ARIA labels. Score range: 0-100.',
+                    'Best Practices': 'Measures adherence to web best practices including HTTPS usage, console errors, image aspect ratios, deprecated APIs, and password field security. Score range: 0-100.'
+                  };
+                  
+                  return (
+                  <ScoreTooltip key={index} content={tooltipContent[item.name] || ''}>
+                    <div className="flex flex-col items-center space-y-2 sm:space-y-2.5 md:space-y-3 cursor-help">
+                      <div className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 lg:w-36 lg:h-36">
                       <div className="w-full h-full">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -574,9 +625,14 @@ const WebsiteAnalysisDashboard = () => {
                         <span className="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-gray-900">{Math.round(item.score)}</span>
                       </div>
                     </div>
-                    <span className="text-xs sm:text-sm font-medium text-gray-700 text-center">{item.name}</span>
-                  </div>
-                ))}
+                    <div className="flex items-center gap-1 justify-center">
+                      <span className="text-xs sm:text-sm font-medium text-gray-700 text-center">{item.name}</span>
+                      <Info className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                    </div>
+                    </div>
+                  </ScoreTooltip>
+                  );
+                })}
               </div>
             </div>
 
@@ -592,32 +648,23 @@ const WebsiteAnalysisDashboard = () => {
                 </h3>
               </div>
               <div className="space-y-2 sm:space-y-2.5 md:space-y-3 max-h-64 sm:max-h-72 md:max-h-80 overflow-y-auto">
-                {analyses[0].recommendations.slice(0, 8).map((rec, index) => (
+                {analyses[0].recommendations.slice(0, 3).map((rec, index) => (
                   <div key={index} className="bg-white rounded-lg border border-gray-200 p-2 sm:p-2.5 md:p-3 hover:shadow-md transition-all duration-200">
-                    <div className="flex items-start justify-between mb-1.5 sm:mb-2">
-                      <div className="flex items-center space-x-1.5 sm:space-x-2 min-w-0 flex-1">
-                        <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 ${
-                          rec.category === 'SEO' ? 'bg-purple-500' :
-                          rec.category === 'Performance' ? 'bg-pink-500' :
-                          rec.category === 'Content' ? 'bg-green-500' :
-                          'bg-blue-500'
-                        }`}></div>
-                        <span className="text-[10px] sm:text-xs font-medium text-gray-600 truncate">{rec.category}</span>
-                      </div>
-                      <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full flex-shrink-0 ml-2 ${
-                        rec.priority === 'High' ? 'bg-red-100 text-red-800' :
-                        rec.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {rec.priority}
-                      </span>
+                    <div className="flex items-center mb-1.5 sm:mb-2">
+                      <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 ${
+                        rec.category === 'SEO' ? 'bg-purple-500' :
+                        rec.category === 'Performance' ? 'bg-pink-500' :
+                        rec.category === 'Content' ? 'bg-green-500' :
+                        'bg-blue-500'
+                      }`}></div>
+                      <span className="text-[10px] sm:text-xs font-medium text-gray-600 ml-1.5 sm:ml-2">{rec.category}</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 text-xs sm:text-sm mb-0.5 sm:mb-1 line-clamp-1">{rec.title}</h4>
-                    <p className="text-[10px] sm:text-xs text-gray-600 line-clamp-2">{rec.description}</p>
+                    <h4 className="font-semibold text-gray-900 text-xs sm:text-sm mb-1 sm:mb-1.5">{rec.title}</h4>
+                    <p className="text-[10px] sm:text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{rec.description}</p>
                   </div>
                 ))}
               </div>
-              {analyses[0].recommendations.length > 8 && (
+              {analyses[0].recommendations.length > 3 && (
                 <div className="mt-2 sm:mt-3 text-center">
                   <button 
                     onClick={() => setSelectedAnalysis(analyses[0])}
@@ -776,19 +823,17 @@ const WebsiteAnalysisDashboard = () => {
                 <div className="space-y-2 sm:space-y-2.5 md:space-y-3">
                   {selectedAnalysis.recommendations?.map((rec, index) => (
                     <div key={index} className="border border-gray-200 rounded-lg p-2 sm:p-3 md:p-4">
-                      <div className="flex items-start justify-between gap-2 sm:gap-3">
-                        <div className="flex-1 min-w-0">
-                          <h5 className="font-medium text-gray-900 text-xs sm:text-sm md:text-base">{rec.title}</h5>
-                          <p className="text-xs sm:text-sm text-gray-600 mt-1">{rec.description}</p>
-                        </div>
-                        <span className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded-full flex-shrink-0 ${
-                          rec.priority === 'High' ? 'bg-red-100 text-red-800' :
-                          rec.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'
-                        }`}>
-                          {rec.priority}
-                        </span>
+                      <div className="flex items-center mb-2">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          rec.category === 'SEO' ? 'bg-purple-500' :
+                          rec.category === 'Performance' ? 'bg-pink-500' :
+                          rec.category === 'Content' ? 'bg-green-500' :
+                          'bg-blue-500'
+                        }`}></div>
+                        <span className="text-xs sm:text-sm font-medium text-gray-600 ml-2">{rec.category}</span>
                       </div>
+                      <h5 className="font-medium text-gray-900 text-xs sm:text-sm md:text-base mb-2">{rec.title}</h5>
+                      <p className="text-xs sm:text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{rec.description}</p>
                     </div>
                   ))}
                 </div>
