@@ -498,7 +498,7 @@ const SettingsMenu = ({ isOpen, onClose }) => {
                     : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                <span className="text-sm font-medium">Tools</span>
+                <span className="text-sm font-medium">Connections</span>
               </button>
               <button
                 onClick={() => setActiveTab('billing')}
